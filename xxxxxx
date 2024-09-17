@@ -1,0 +1,103 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+local camera = game.Workspace.CurrentCamera
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Stats = game:GetService("Stats")
+
+local targetPlayer = nil
+local isAiming = false
+local smoothFactor = 0.7
+local healthThreshold = 5
+local previousPredictedPosition = nil
+
+local function resolveAimAggressive(targetHumanoidRootPart)
+    local targetPosition = targetHumanoidRootPart.Position
+    local targetVelocity = targetHumanoidRootPart.Velocity
+    local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
+    local predictionFactor = 0.155
+    local predictedPosition = targetPosition + targetVelocity * predictionFactor
+
+    if previousPredictedPosition then
+        local suddenChange = (predictedPosition - previousPredictedPosition).Magnitude
+        if suddenChange > 5 then
+            predictedPosition = previousPredictedPosition + (predictedPosition - previousPredictedPosition) * 1.5
+        else
+            predictedPosition = predictedPosition:Lerp(previousPredictedPosition, 0.2)
+        end
+    end
+    previousPredictedPosition = predictedPosition
+    
+    return predictedPosition
+end
+
+local function aimCameraAt(targetPlayer)
+    if targetPlayer and targetPlayer.Character then
+        local targetHumanoidRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if targetHumanoidRootPart then
+            local predictedPosition = resolveAimAggressive(targetHumanoidRootPart)
+            local cameraPosition = camera.CFrame.Position
+            local desiredCFrame = CFrame.new(cameraPosition, predictedPosition)
+            camera.CFrame = camera.CFrame:Lerp(desiredCFrame, smoothFactor)
+        end
+    end
+end
+
+local function getClosestPlayerToCursor()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character then
+            local targetHumanoidRootPart = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if targetHumanoidRootPart then
+                local screenPosition, onScreen = camera:WorldToScreenPoint(targetHumanoidRootPart.Position)
+                if onScreen then
+                    local mousePosition = Vector2.new(mouse.X, mouse.Y)
+                    local distance = (Vector2.new(screenPosition.X, screenPosition.Y) - mousePosition).Magnitude
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        closestPlayer = otherPlayer
+                    end
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+local function setupTargetPlayerHealthListener(targetPlayer)
+    local humanoid = targetPlayer.Character and targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.HealthChanged:Connect(function()
+            if humanoid.Health <= healthThreshold then
+                isAiming = false
+                targetPlayer = nil
+            end
+        end)
+    end
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if input.KeyCode == Enum.KeyCode.T and not gameProcessedEvent then
+        if isAiming then
+            isAiming = false
+            targetPlayer = nil
+        else
+            local closestPlayer = getClosestPlayerToCursor()
+            if closestPlayer then
+                targetPlayer = closestPlayer
+                isAiming = true
+                setupTargetPlayerHealthListener(closestPlayer)
+            end
+        end
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if isAiming and targetPlayer then
+        aimCameraAt(targetPlayer)
+    end
+end)
