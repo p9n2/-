@@ -4,60 +4,37 @@ local mouse = player:GetMouse()
 local camera = game.Workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local Stats = game:GetService("Stats")
 
 local targetPlayer = nil
 local isAiming = false
-local smoothFactor = 0.7
+local smoothFactor = 0.85
 local healthThreshold = 5
-local previousPredictedPosition = nil
 
-local predictionValues = {
-    [0] = 0.100, [10] = 0.107, [20] = 0.111, [30] = 0.116,
-    [40] = 0.120, [50] = 0.122, [60] = 0.126, [70] = 0.133,
-    [80] = 0.1395, [90] = 0.1433, [100] = 0.155
-}
-
-local function getPredictionFactor()
-    local pingString = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
-    local ping = tonumber(pingString:match("%d+")) or 100
-    local closestPing = 100
-    
-    for pingValue, _ in pairs(predictionValues) do
-        if math.abs(ping - pingValue) < math.abs(ping - closestPing) then
-            closestPing = pingValue
-        end
+local function CheckAnti(Plr)
+    if not Plr or not Plr.Character then
+        return false
     end
 
-    return predictionValues[closestPing]
-end
-
-local function resolveAimAggressive(targetHumanoidRootPart)
-    local targetPosition = targetHumanoidRootPart.Position
-    local targetVelocity = targetHumanoidRootPart.Velocity
-    local predictionFactor = getPredictionFactor()
-    local predictedPosition = targetPosition + targetVelocity * predictionFactor
-
-    if previousPredictedPosition then
-        local suddenChange = (predictedPosition - previousPredictedPosition).Magnitude
-        if suddenChange > 5 then
-            predictedPosition = previousPredictedPosition + (predictedPosition - previousPredictedPosition) * 1.5
-        else
-            predictedPosition = predictedPosition:Lerp(previousPredictedPosition, 0.2)
-        end
+    local hrp = Plr.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        return false
     end
-    previousPredictedPosition = predictedPosition
-    
-    return predictedPosition
+
+    local velocity = hrp.Velocity
+
+    if velocity.Y < -70 or velocity.X > 450 or velocity.X < -35 or velocity.Y > 60 or velocity.Z > 35 or velocity.Z < -35 then
+        return true
+    end
+    return false
 end
 
 local function aimCameraAt(targetPlayer)
     if targetPlayer and targetPlayer.Character then
         local targetHumanoidRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
         if targetHumanoidRootPart then
-            local predictedPosition = resolveAimAggressive(targetHumanoidRootPart)
+            local targetPosition = targetHumanoidRootPart.Position
             local cameraPosition = camera.CFrame.Position
-            local desiredCFrame = CFrame.new(cameraPosition, predictedPosition)
+            local desiredCFrame = CFrame.new(cameraPosition, targetPosition)
             camera.CFrame = camera.CFrame:Lerp(desiredCFrame, smoothFactor)
         end
     end
@@ -107,6 +84,10 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
         else
             local closestPlayer = getClosestPlayerToCursor()
             if closestPlayer then
+                if CheckAnti(closestPlayer) then
+                    print("Anti-Lock detected, Resolved.")
+                end
+                
                 targetPlayer = closestPlayer
                 isAiming = true
                 setupTargetPlayerHealthListener(closestPlayer)
