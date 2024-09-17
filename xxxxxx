@@ -12,11 +12,30 @@ local smoothFactor = 0.7
 local healthThreshold = 5
 local previousPredictedPosition = nil
 
+local predictionValues = {
+    [0] = 0.100, [10] = 0.107, [20] = 0.111, [30] = 0.116,
+    [40] = 0.120, [50] = 0.122, [60] = 0.126, [70] = 0.133,
+    [80] = 0.1395, [90] = 0.1433, [100] = 0.155
+}
+
+local function getPredictionFactor()
+    local pingString = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
+    local ping = tonumber(pingString:match("%d+")) or 100
+    local closestPing = 100
+    
+    for pingValue, _ in pairs(predictionValues) do
+        if math.abs(ping - pingValue) < math.abs(ping - closestPing) then
+            closestPing = pingValue
+        end
+    end
+
+    return predictionValues[closestPing]
+end
+
 local function resolveAimAggressive(targetHumanoidRootPart)
     local targetPosition = targetHumanoidRootPart.Position
     local targetVelocity = targetHumanoidRootPart.Velocity
-    local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
-    local predictionFactor = 0.155
+    local predictionFactor = getPredictionFactor()
     local predictedPosition = targetPosition + targetVelocity * predictionFactor
 
     if previousPredictedPosition then
